@@ -9,6 +9,8 @@
 #include <sys/prctl.h>
 #include <unistd.h>
 static void tick(struct service_graph *g) { graph_tick(g); usleep(1000); }
+static int initializing_ready;
+static int initializing_probe(void) { return initializing_ready; }
 static int all_running(struct service_graph *g)
 {
     for (unsigned i = 0; i < g->count; i++) if (g->services[i].state != SV_RUNNING) return 0;
@@ -138,5 +140,30 @@ int main(int argc, char **argv)
     graph_stop(&g); end = monotonic_ms()+4000;
     while (!graph_stopped(&g) && monotonic_ms() < end) tick(&g);
     assert(graph_stopped(&g));
+    /* A requested provider restart must retain the provider while a consumer
+     * finishes its bounded initialization and then shuts down. */
+    g.services[1].probe=initializing_probe;
+    g.services[1].finish_start_before_stop=1;
+    g.services[1].notify=0;
+    g.services[1].oneshot=0;
+    g.services[1].start_ms=2000;
+    initializing_ready=0;
+    assert(!graph_request(&g,0,CT_START));
+    end=monotonic_ms()+3000;
+    while(g.services[0].state!=SV_RUNNING && monotonic_ms()<end) tick(&g);
+    assert(!graph_request(&g,1,CT_START)); tick(&g);
+    assert(g.services[1].state==SV_STARTING);
+    pid_t provider=g.services[0].pid;
+    assert(!graph_request(&g,0,CT_RESTART));
+    for(int i=0;i<20;i++) tick(&g);
+    assert(g.services[1].stop_pending && g.services[0].pid==provider && g.services[0].state==SV_RUNNING);
+    initializing_ready=1; g.services[1].next_probe=0;
+    end=monotonic_ms()+4000;
+    while((g.services[0].pid==provider || !all_running(&g)) && monotonic_ms()<end) tick(&g);
+    assert(g.services[0].pid!=provider && all_running(&g));
+    graph_stop(&g); end=monotonic_ms()+4000;
+    while(!graph_stopped(&g) && monotonic_ms()<end) tick(&g);
+    assert(graph_stopped(&g));
+    puts("PASS provider restart waits for consumer initialization before ordered stop and restart");
     return 0;
 }

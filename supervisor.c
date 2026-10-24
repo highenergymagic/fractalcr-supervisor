@@ -75,6 +75,7 @@ static void drain(struct service *s)
 
 static void stopping(struct service *s)
 {
+    s->stop_pending = 0;
     if (s->group > 0) kill(s->terminate_leader && s->pid > 0 ? s->pid : -s->group, SIGTERM);
     s->state = SV_STOPPING;
     s->deadline = monotonic_ms() + s->stop_ms;
@@ -124,6 +125,7 @@ static void launch(struct service *s)
     fcntl(pipes[0], F_SETFL, O_NONBLOCK);
     s->log_fd = pipes[0]; s->pid = child; s->group = child;
     s->starts++; s->health_misses = 0;
+    s->stop_pending = 0;
     s->state = SV_STARTING;
     s->deadline = monotonic_ms() + s->start_ms;
     s->next_probe = 0;
@@ -139,6 +141,11 @@ void service_start(struct service *s)
 void service_stop(struct service *s)
 {
     s->wanted = 0;
+    if (s->finish_start_before_stop && s->state == SV_STARTING && s->pid > 0) {
+        if (!s->stop_pending) event(s, "5-SERVICE_STOP_PENDING", "Finishing initialization before stopping.");
+        s->stop_pending = 1;
+        return;
+    }
     if (s->group > 0) stopping(s);
     else s->state = SV_STOPPED;
 }
@@ -148,6 +155,10 @@ void service_restart(struct service *s)
     if (s->group <= 0) { service_start(s); return; }
     s->wanted = 1; s->failures = 0;
     event(s, "5-SERVICE_RESTART", "Restart requested.");
+    if (s->finish_start_before_stop && s->state == SV_STARTING && s->pid > 0) {
+        s->stop_pending = 1;
+        return;
+    }
     stopping(s);
 }
 
@@ -238,7 +249,9 @@ void service_tick(struct service *s)
             if (health < 0) s->next_probe = now + 50;
             if (health > 0) {
                 s->health_misses = 0;
-                if (s->state == SV_STARTING) {
+                if (s->stop_pending) {
+                    stopping(s);
+                } else if (s->state == SV_STARTING) {
                     s->state = SV_RUNNING; s->stable_since = now;
                     event(s, "5-SERVICE_READY", "Ready.");
                 } else if (now - s->stable_since > s->healthy_ms) s->failures = 0;

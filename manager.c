@@ -217,6 +217,11 @@ int main(void)
     /* Dockerd must stop its managed containerd and workloads in its own order.
      * Group-wide TERM races that cleanup and can leave partial network state. */
     graph.services[engine].terminate_leader = 1;
+    /* Dockerd may persist the default bridge before finishing its controller
+     * setup. TERM during that window can strand the bridge record. Keep its
+     * providers alive until API readiness, then request graceful shutdown.
+     * The original startup deadline still bounds a stuck initialization. */
+    graph.services[engine].finish_start_before_stop = 1;
     graph.services[engine].stop_ms = 60000;
     unsigned diagnostics = add("diagnostics", "/usr/libexec/fractal-management", "diagnostics", 1U << engine, 0);
     graph.services[diagnostics].oneshot = 1; graph.services[diagnostics].notify = 0;
