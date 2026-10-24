@@ -4,8 +4,8 @@
 #include <stdint.h>
 #include "supervisor.h"
 #define FCR_CONTROL "/run/fractal-control.sock"
-#define FCR_SERVICES 16
-#define FCR_PROTOCOL 1
+#define FCR_SERVICES 32
+#define FCR_PROTOCOL 2
 enum control_op { CT_LIST, CT_START, CT_STOP, CT_RESTART, CT_RELOAD };
 struct control_request { uint32_t version, op; char name[32]; };
 struct service_status {

@@ -1,3 +1,4 @@
+#include "release.h"
 /* SPDX-License-Identifier: MIT -- shared appliance PID 1. No command parser,
  * network policy, datastore probing, or image verification runs in PID 1. */
 #define _GNU_SOURCE
@@ -196,18 +197,31 @@ int main(void)
     console = add("recovery-console", worker, "console", 0, 0);
 #else
     const char *worker = "/usr/libexec/fractal-platform";
-    puts("\nFractalCR Software, Version 0.5 (development)\nInitializing platform services...");
+    puts("\nFractalCR Software, Version " FCR_VERSION " (" FCR_RELEASE_KIND ")\nInitializing platform services...");
     add("platform", worker, "platform", 0, 1);
     add("logging", worker, "logging", 0, 1);
     add("datastore", worker, "datastore", 1U << 0, 1);
-    add("configuration", worker, "configuration", 1U << 2, 1);
-    add("networking", worker, "networking", 1U << 3, 1);
+    add("configuration", "/usr/libexec/fractal-management", "configuration-service", 1U << 2, 1);
+    add("networking", "/usr/libexec/fractal-management", "network-service", 1U << 3, 1);
     unsigned syslog = add("syslog", worker, "syslog", 0, 1);
-    unsigned engine = add("container-engine", worker, "container-engine", (1U << 2) | (1U << 4) | (1U << syslog), 1);
+    unsigned storage = add("container-storage", "/usr/libexec/fractal-management", "containerd-service", (1U << 3) | (1U << syslog), 1);
+    graph.services[storage].terminate_leader = 1;
+    graph.services[storage].start_ms = 120000;
+    graph.services[storage].stop_ms = 30000;
+    unsigned factory = add("vm-factory", "/usr/libexec/fractal-vm-factory", NULL, (1U << 3) | (1U << syslog), 1);
+    graph.services[factory].start_ms = 120000;
+    graph.services[factory].stop_ms = 30000;
+    unsigned engine = add("container-engine", worker, "container-engine", (1U << 2) | (1U << 4) | (1U << syslog) | (1U << storage) | (1U << factory), 1);
     container_engine = &graph.services[engine];
     graph.services[engine].notify = 0; graph.services[engine].probe = docker_ping;
-    unsigned diagnostics = add("diagnostics", "/usr/libexec/fractal-selftest", NULL, 1U << engine, 0);
+    /* Dockerd must stop its managed containerd and workloads in its own order.
+     * Group-wide TERM races that cleanup and can leave partial network state. */
+    graph.services[engine].terminate_leader = 1;
+    graph.services[engine].stop_ms = 60000;
+    unsigned diagnostics = add("diagnostics", "/usr/libexec/fractal-management", "diagnostics", 1U << engine, 0);
     graph.services[diagnostics].oneshot = 1; graph.services[diagnostics].notify = 0;
+    graph.services[diagnostics].terminate_leader = 1;
+    graph.services[diagnostics].stop_ms = 70000;
     graph.services[diagnostics].start_ms = 120000; graph.services[diagnostics].max_failures = 1;
     unsigned management = add("management", "/usr/libexec/fractal-management", "serve", 0, 1);
     graph.services[management].start_ms = 180000;
@@ -216,8 +230,12 @@ int main(void)
     graph.services[debug].start_ms = 180000;
     /* Two bounded Docker calls remove the owned container before providers stop. */
     graph.services[debug].stop_ms = 70000;
-    unsigned buildkit = add("buildkit",worker,"buildkit",(1U << 2) | (1U << 4),0);
+    unsigned buildkit = add("buildkit","/usr/libexec/fractal-management","buildkit-service",(1U << 2) | (1U << 4),0);
     graph.services[buildkit].start_ms=120000;
+    add("time-sync", "/usr/libexec/fractal-management", "time-service", 1U << 4, 1);
+    unsigned formatter = add("storage-format", "/usr/libexec/fractal-storage", NULL, 1U << 0, 1);
+    graph.services[formatter].terminate_leader = 1;
+    graph.services[formatter].stop_ms = 300000;
     console = add("console", worker, "console", 0, 0);
     setenv("DOCKER_RAMDISK", "1", 1);
 #endif

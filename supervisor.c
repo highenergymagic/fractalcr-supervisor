@@ -75,7 +75,7 @@ static void drain(struct service *s)
 
 static void stopping(struct service *s)
 {
-    if (s->group > 0) kill(-s->group, SIGTERM);
+    if (s->group > 0) kill(s->terminate_leader && s->pid > 0 ? s->pid : -s->group, SIGTERM);
     s->state = SV_STOPPING;
     s->deadline = monotonic_ms() + s->stop_ms;
 }
@@ -115,7 +115,7 @@ static void launch(struct service *s)
             if (tty < 0 || dup2(tty, 0) < 0 || dup2(tty, 1) < 0) _exit(126);
             if (tty > 2) close(tty);
         }
-        execvp(s->argv[0], s->argv);
+        execv(s->argv[0], s->argv);
         perror(s->argv[0]); _exit(127);
     }
     close(pipes[1]);

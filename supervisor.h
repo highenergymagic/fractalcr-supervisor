@@ -16,6 +16,7 @@ struct service {
     long long deadline, next_probe, stable_since;
     unsigned start_ms, stop_ms, backoff_ms, healthy_ms, max_failures;
     int notify, notify_fd, notified, oneshot, console, hold;
+    int terminate_leader; /* TERM main process first; KILL the group on timeout. */
 };
 long long monotonic_ms(void);
 const char *service_state_name(enum service_state state);
