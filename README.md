@@ -1,5 +1,9 @@
 # Appliance services
 
+This is the shared supervisor component. Build and test it through a recursive
+[integration checkout](https://github.com/highenergymagic/fractalcr), which pins
+ROMMON and the system layer together. Commands below run from that checkout root.
+
 ROMMON and the OE system compile the same supervisor, dependency graph, and local
 control protocol. PID 1 only bootstraps the root bind and proc/sys/dev/run mounts,
 owns the service table, drains bounded service output, reaps children, and handles
@@ -115,9 +119,10 @@ reconnection, USB recovery, signed handoff, Docker readiness, and persistent dat
 ## Reproducing image bytes
 
 ```
-.\tools\remote-build.ps1 -Stage all -BuildAction Reproduce
+.\tools\remote-build.ps1 -BuildHost YOUR_BUILD_HOST -Stage all -BuildAction Reproduce
 ```
 
+Replace `YOUR_BUILD_HOST` with your configured Linux SSH build host.
 This uses the exact existing builder image by immutable Docker image ID. Each
 stage regenerates its appliance code, root filesystem, and kernel twice, compares
 every resulting image byte, then runs the normal VM tests. Downloaded dependency
