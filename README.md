@@ -2,7 +2,8 @@
 
 This is the shared supervisor component. Build and test it through a recursive
 [integration checkout](https://github.com/highenergymagic/fractalcr), which pins
-ROMMON and the system layer together. Commands below run from that checkout root.
+ROMMON and the system layer together. Build commands run from that checkout root;
+service-control commands run at the system or ROMMON prompt as indicated.
 
 ROMMON and the OE system compile the same supervisor, dependency graph, and local
 control protocol. PID 1 only bootstraps the root bind and proc/sys/dev/run mounts,
@@ -21,12 +22,17 @@ replace executables or inject shell commands into the service table.
 | datastore | platform | Discover and mount existing FRDATA Btrfs; clean unmount on stop |
 | configuration | datastore | Validate JSON, set hostname, publish the runtime configuration |
 | networking | configuration | Apply configured addresses/routes/DNS; remove on stop |
-| container-engine | datastore, networking | Delegate cgroup controllers, place Docker in its own cgroup, API readiness and health checks |
+| syslog | bootstrap | Receive local syslog datagrams into bounded logs |
+| container-storage | configuration, syslog | Manage the containerd storage service for the selected backend |
+| vm-factory | configuration, syslog | Manage the optional Kata snapshot factory and readiness |
+| container-engine | datastore, networking, syslog, container-storage, vm-factory | Delegate cgroup controllers, place Docker in its own cgroup, API readiness and health checks |
 | diagnostics | container-engine | Optional, supervised one-shot container test job |
 | management | bootstrap | Configuration parser, transactional apply and operational actions |
 | ssh | datastore, networking, management | Local AAA, persistent host identity, interactive appliance VTY sessions |
 | buildkit | datastore, networking | Optional standalone build service with persistent state |
 | debug-container | container-engine | Optional privileged Debian support container |
+| time-sync | networking | NTP client, time-source status and configured calendar updates |
+| storage-format | platform | Validate and perform explicitly requested datastore formatting |
 | console | bootstrap | Serial CLI and service control; available in degraded operation |
 
 | ROMMON service | Requires | Responsibility |
@@ -90,7 +96,7 @@ requires is refused; restarting either is supported. ROMMON console restart relo
 settings and stays at the monitor prompt instead of repeating autoboot. Unsaved
 monitor settings and command history belong to the console process.
 
-## CLI
+## Inspect and control services
 
 System:
 
@@ -111,6 +117,12 @@ service recovery-network stop
 service recovery-console restart
 show logging recovery-network
 ```
+
+After a lifecycle request, use `show platform software service` in the system or
+`show services` in ROMMON to verify state. Provider restarts interrupt their
+consumers; collect volatile logs before restarting a failed service.
+
+## Verification
 
 `tools/check-services.sh` compiles both profiles and runs process-backed fault
 tests. Image tests additionally exercise real dependency restarts, console
