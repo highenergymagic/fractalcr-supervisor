@@ -138,9 +138,9 @@ Replace `YOUR_BUILD_HOST` with your configured Linux SSH build host.
 This uses the exact existing builder image by immutable Docker image ID. Each
 stage regenerates its appliance code, root filesystem, and kernel twice, compares
 every resulting image byte, then runs the normal VM tests. Downloaded dependency
-sources and previously built dependency toolchains are retained. This is a forced
-appliance rebuild test, not a claim that every upstream dependency has been rebuilt
-independently on a second machine.
+sources and previously built dependency toolchains are retained. This test
+measures image regeneration with the existing toolchain. Independent toolchain
+reproduction requires separate fresh-builder comparisons.
 
 `reproducibility.json` is written only after both passes match. It records source
 hashes, builder ID and package versions, public certificate/key hashes, the source
